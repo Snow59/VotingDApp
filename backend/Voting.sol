@@ -1,4 +1,3 @@
-
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.0;
 
@@ -48,19 +47,13 @@ contract Voting is Ownable {
         _;
     }
 
-    function getCurrentState() public view returns (WorkflowStatus) {
-        return currentStatus;
-    }
-
     function registerVoter(address _voter) public onlyOwner atStage(WorkflowStatus.RegisteringVoters) {
         require(!voters[_voter].isRegistered, "Voter is already registered.");
         voters[_voter] = Voter({isRegistered: true, hasVoted: false, votedProposalId: 0});
         emit VoterRegistered(_voter);
     }
 
-    function getCurrentWorkflowStatus() public view returns (WorkflowStatus) {
-        return currentStatus;
-    }
+ 
 
     function startProposalsRegistration() public onlyOwner atStage(WorkflowStatus.RegisteringVoters) {
         currentStatus = WorkflowStatus.ProposalsRegistrationStarted;
@@ -98,8 +91,13 @@ contract Voting is Ownable {
     function endVotingSession() public onlyOwner atStage(WorkflowStatus.VotingSessionStarted) {
         currentStatus = WorkflowStatus.VotingSessionEnded;
         emit WorkflowStatusChange(WorkflowStatus.VotingSessionStarted, WorkflowStatus.VotingSessionEnded);
+        tallyVotes();  // Appeler directement tallyVotes ici
     }
 
+
+    // Assurez-vous que cette fonction met bien à jour l'état à 'VotesTallied'
+
+//FONCTION QUI ENREGISTRE LES VOTES A LA FIN DE LA SESSIONS DE VOTE 
     function tallyVotes() public onlyOwner atStage(WorkflowStatus.VotingSessionEnded) {
         uint maxVoteCount = 0;
         uint _winningProposalId = 0;
@@ -109,11 +107,47 @@ contract Voting is Ownable {
                 _winningProposalId = i;
             }
         }
+        currentStatus = WorkflowStatus.VotesTallied; // Assurez-vous que cette ligne est exécutée
         emit WorkflowStatusChange(WorkflowStatus.VotingSessionEnded, WorkflowStatus.VotesTallied);
     }
 
+    
+    //FONCTION QUI DONNE LE STATUT EN DETAIL 
+    function getDetailedState() public view returns (string memory) {
+        if(currentStatus == WorkflowStatus.RegisteringVoters) {
+            return "Registering Voters";
+        } else if(currentStatus == WorkflowStatus.ProposalsRegistrationStarted) {
+            return "Proposals Registration Started";
+        } else if(currentStatus == WorkflowStatus.ProposalsRegistrationEnded) {
+            return "Proposals Registration Ended";
+        } else if(currentStatus == WorkflowStatus.VotingSessionStarted) {
+            return "Voting Session Started";
+        } else if(currentStatus == WorkflowStatus.VotingSessionEnded) {
+            return "Voting Session Ended";
+        } else if(currentStatus == WorkflowStatus.VotesTallied) {
+            return "Votes Tallied";
+        } else {
+            return "Unknown State";
+        }
+    }
+
+
+//FONCTION QUI RETOURNE LE GAGNANT DES VOTES 
     function getWinner() public view atStage(WorkflowStatus.VotesTallied) returns (string memory) {
         require(proposals.length > 0, "No proposals registered.");
-        return proposals[proposals.length - 1].description; // Assuming the last proposal has the highest votes
+        
+        uint winningVoteCount = 0;
+        uint winningProposalIndex = 0; // Index of the winning proposal
+
+        for (uint i = 0; i < proposals.length; i++) {
+            if (proposals[i].voteCount > winningVoteCount) {
+                winningVoteCount = proposals[i].voteCount;
+                winningProposalIndex = i;
+            }
+        }
+
+        // Return the description of the proposal with the most votes
+        return proposals[winningProposalIndex].description;
     }
+
 }
