@@ -1,8 +1,9 @@
 'use client';
 import { ConnectButton } from '@rainbow-me/rainbowkit';
 import { abi, contractAddress } from '@/constants';
-import { useAccount, useContractWrite, useContractRead } from 'wagmi';
-import { useState } from 'react';
+import { useAccount, useContractWrite, useContractRead, useContractInfiniteReads } from 'wagmi';
+import { readContract} from '@wagmi/core'
+import { useEffect, useState } from 'react';
 
 export default function Home() {
   const { isConnected } = useAccount();
@@ -11,22 +12,9 @@ export default function Home() {
   const [proposalDescription, setProposalDescription] = useState('');
   const [proposalId, setProposalId] = useState(0);
   const [winner, setWinner] = useState('');
-  const [proposalListHtml, setProposalListHtml] = useState("");
-
-
-  // Read the winner from the contract
-  const readWinner = async () => {
-    try {
-      const data = await useContractRead({
-        address: contractAddress,
-        abi: abi,
-        functionName: 'getWinner',
-      });
-      setWinner(data);
-    } catch (error) {
-      console.error('Error reading winner:', error);
-    }
-  };
+  const [message, setMessage] = useState("");
+  const [proposals, setProposals] = useState([]);
+  
 
   // Register a voter
   const { write: registerVoter } = useContractWrite({
@@ -45,20 +33,18 @@ export default function Home() {
 
   async function fetchProposals() {
     try {
-      const proposals = await useContractRead({
+      setProposals(readContract({
         address: contractAddress,
         abi: abi,
-        functionName: 'getProposals',
-      });
-      const proposalsList = document.getElementById('proposals-list');
-
-      proposals.forEach(proposal => {
-        const listItem = document.createElement('li');
-        listItem.innerHTML = `<p>ID: ${proposal.id.toString()}</p>
-                              <p>Description: ${proposal.description}</p>
-                              <p>Vote Count: ${proposal.voteCount.toString()}</p>`;
-        proposalsList.appendChild(listItem);
-      });
+        functionName: 'getProposals'
+      }));
+      let list = "";
+      console.log(proposals);
+      for(let i=0; i<proposals.length;i++){
+        list = list +"<li>ID:"+proposal.proposalId+" "+proposal.description+" Votes :npx h"+ proposal.voteCount +"</li>"
+      }
+      document.getElementById('proposals-list').innerHTML = list;
+      
     } catch (error) {
       console.error('Erreur lors de la récupération des propositions :', error);
     }
@@ -98,12 +84,29 @@ export default function Home() {
     args: [proposalId],
   });
 
+  // End voting session
+  const { write: endVotingSession } = useContractWrite({
+    address: contractAddress,
+    abi: abi,
+    functionName: 'endVotingSession',
+  });
+
   // Tally votes
-  const { write: tallyVotes } = useContractWrite({
+  const { write: tallyVotes } = useContractWrite({ // Pas utilisée car déjà appelée dans le backend par la fonction endVotingSession
     address: contractAddress,
     abi: abi,
     functionName: 'tallyVotes',
   });
+
+  // Get winner
+  const readWinner = async () => {
+    const data = await readContract({
+      address: contractAddress,
+      abi: abi,
+      functionName: 'getWinner',
+    });
+    setMessage("The winning proposal is : "+data);
+  };
 
 
   return (
@@ -162,7 +165,7 @@ export default function Home() {
           }}>Start Voting Session</button><br></br><br></br>
 
           <h2>Proposals</h2>
-          <ul id="proposalsList">
+          <ul id="proposals-list">
             <li>Proposals will be shown here</li>
           </ul>
           <button onClick={async () =>{fetchProposals()}}>Refresh Proposals List</button><br/><br/>
@@ -183,20 +186,17 @@ export default function Home() {
 
           <button onClick={async () => {
             try {
-              await tallyVotes();
+              await endVotingSession();
             } catch (error) {
-              console.error('Error tallying votes:', error);
+              console.error('Error ending voting session:', error);
             }
-          }}>Tally Votes</button>
+          }}>End Voting Session</button><br></br><br></br>
 
-<button onClick={async () => {
-            try {
-              await readWinner();
-              alert('The wining proposal is '+winner);
-            } catch (error) {
-              console.error('Error reading wining proposal:', error);
-            }
-          }}>Tally Votes</button>
+          <button onClick={readWinner}>Get Winning Proposal</button>
+
+          <h2>Winning proposal : </h2>
+          {message && <p>{message}</p>}
+
         </div>
       ) : (
         <p>Please connect your Wallet to interact with the DApp.</p>

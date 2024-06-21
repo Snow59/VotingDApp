@@ -36,12 +36,13 @@ contract Voting is Ownable {
     Proposal[] public proposals;
     WorkflowStatus public currentStatus;
     string public proposalListHtml;
+    uint public winningProposalId;
+    
 
     event VoterRegistered(address voterAddress);
     event ProposalRegistered(uint proposalId);
     event Voted(address voter, uint proposalId);
     event WorkflowStatusChange(WorkflowStatus previousStatus, WorkflowStatus newStatus);
-
     
     constructor() Ownable(msg.sender) {
         currentStatus = WorkflowStatus.RegisteringVoters;
@@ -53,7 +54,6 @@ contract Voting is Ownable {
     }
 
     function registerVoter(address _voter) public /*onlyOwner*/ atStage(WorkflowStatus.RegisteringVoters) { // Nous obtenons cette erreur en utilisant le modifier onlyOwner de Ownable : Error: VM Exception while processing transaction: reverted with an unrecognized custom error (return data: 0x118cdaa700000000000000000000000090f79bf6eb2c4f870365e785982e1f101e93b906)
-        console.log(owner());
         require(!voters[_voter].isRegistered, "Voter is already registered.");
         voters[_voter] = Voter({isRegistered: true, hasVoted: false, votedProposalId: 0});
         emit VoterRegistered(_voter);
@@ -101,20 +101,19 @@ contract Voting is Ownable {
     function endVotingSession() public /*onlyOwner*/ atStage(WorkflowStatus.VotingSessionStarted) {
         currentStatus = WorkflowStatus.VotingSessionEnded;
         emit WorkflowStatusChange(WorkflowStatus.VotingSessionStarted, WorkflowStatus.VotingSessionEnded);
-        tallyVotes(); 
+        tallyVotes();
     }
 
-    function tallyVotes() public /*onlyOwner*/ atStage(WorkflowStatus.VotingSessionEnded) {
-        uint maxVoteCount = 0;
-        uint _winningProposalId = 0;
+    function tallyVotes() public /*onlyOwner*/ returns (string memory) {
+        require(currentStatus == WorkflowStatus.VotesTallied || currentStatus == WorkflowStatus.VotingSessionEnded);
+        uint winningVoteCount = 0;
         for (uint i = 0; i < proposals.length; i++) {
-            if (proposals[i].voteCount > maxVoteCount) {
-                maxVoteCount = proposals[i].voteCount;
-                _winningProposalId = i;
+            if (proposals[i].voteCount > winningVoteCount) {
+                winningVoteCount = proposals[i].voteCount;
+                winningProposalId = i;
             }
         }
         currentStatus = WorkflowStatus.VotesTallied;
-        emit WorkflowStatusChange(WorkflowStatus.VotingSessionEnded, WorkflowStatus.VotesTallied);
     }
 
     function getDetailedState() public view returns (string memory) {
@@ -137,18 +136,7 @@ contract Voting is Ownable {
 
     function getWinner() public view atStage(WorkflowStatus.VotesTallied) returns (string memory) {
         require(proposals.length > 0, "No proposals registered.");
-        
-        uint winningVoteCount = 0;
-        uint winningProposalIndex = 0;
-
-        for (uint i = 0; i < proposals.length; i++) {
-            if (proposals[i].voteCount > winningVoteCount) {
-                winningVoteCount = proposals[i].voteCount;
-                winningProposalIndex = i;
-            }
-        }
-
-        return proposals[winningProposalIndex].description;
+        return proposals[winningProposalId].description;
     }
 
     function getProposals() public view returns (Proposal[] memory){

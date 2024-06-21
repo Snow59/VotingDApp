@@ -297,7 +297,13 @@ export const abi = [
   {
     "inputs": [],
     "name": "tallyVotes",
-    "outputs": [],
+    "outputs": [
+      {
+        "internalType": "string",
+        "name": "",
+        "type": "string"
+      }
+    ],
     "stateMutability": "nonpayable",
     "type": "function"
   },
@@ -350,6 +356,19 @@ export const abi = [
       {
         "internalType": "uint256",
         "name": "votedProposalId",
+        "type": "uint256"
+      }
+    ],
+    "stateMutability": "view",
+    "type": "function"
+  },
+  {
+    "inputs": [],
+    "name": "winningProposalId",
+    "outputs": [
+      {
+        "internalType": "uint256",
+        "name": "",
         "type": "uint256"
       }
     ],
