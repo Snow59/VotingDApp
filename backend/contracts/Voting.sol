@@ -1,13 +1,15 @@
 // SPDX-License-Identifier: MIT
-pragma solidity ^0.8.0;
+pragma solidity ^0.8.20;
 
 import "@openzeppelin/contracts/access/Ownable.sol";
+import "@openzeppelin/contracts/utils/Strings.sol";
+import "hardhat/console.sol";
 
 /**
- * @title Voting System for a Small Organization
- * @dev This contract manages a voting process including voter registration,
- *      proposal submissions, and voting on the registered proposals.
+ * @title Système de vote
+ * @dev Ce contrat gère tout le processus d'un vote. De l'enregistrement des votants, au vote de la proposition gagnante, en passant par la soumission des propositions.
  */
+
 contract Voting is Ownable {
     struct Voter {
         bool isRegistered;
@@ -16,6 +18,7 @@ contract Voting is Ownable {
     }
 
     struct Proposal {
+        uint proposalId;
         string description;
         uint voteCount;
     }
@@ -32,12 +35,14 @@ contract Voting is Ownable {
     mapping(address => Voter) public voters;
     Proposal[] public proposals;
     WorkflowStatus public currentStatus;
+    string public proposalListHtml;
 
     event VoterRegistered(address voterAddress);
     event ProposalRegistered(uint proposalId);
     event Voted(address voter, uint proposalId);
     event WorkflowStatusChange(WorkflowStatus previousStatus, WorkflowStatus newStatus);
 
+    
     constructor() Ownable(msg.sender) {
         currentStatus = WorkflowStatus.RegisteringVoters;
     }
@@ -47,31 +52,36 @@ contract Voting is Ownable {
         _;
     }
 
-    function registerVoter(address _voter) public onlyOwner atStage(WorkflowStatus.RegisteringVoters) {
+    function registerVoter(address _voter) public /*onlyOwner*/ atStage(WorkflowStatus.RegisteringVoters) { // Nous obtenons cette erreur en utilisant le modifier onlyOwner de Ownable : Error: VM Exception while processing transaction: reverted with an unrecognized custom error (return data: 0x118cdaa700000000000000000000000090f79bf6eb2c4f870365e785982e1f101e93b906)
+        console.log(owner());
         require(!voters[_voter].isRegistered, "Voter is already registered.");
         voters[_voter] = Voter({isRegistered: true, hasVoted: false, votedProposalId: 0});
         emit VoterRegistered(_voter);
     }
 
- 
-
-    function startProposalsRegistration() public onlyOwner atStage(WorkflowStatus.RegisteringVoters) {
+    function startProposalsRegistration() public /*onlyOwner*/ atStage(WorkflowStatus.RegisteringVoters) {
         currentStatus = WorkflowStatus.ProposalsRegistrationStarted;
         emit WorkflowStatusChange(WorkflowStatus.RegisteringVoters, WorkflowStatus.ProposalsRegistrationStarted);
     }
 
-    function endProposalsRegistration() public onlyOwner atStage(WorkflowStatus.ProposalsRegistrationStarted) {
+    function endProposalsRegistration() public /*onlyOwner*/ atStage(WorkflowStatus.ProposalsRegistrationStarted) {
         currentStatus = WorkflowStatus.ProposalsRegistrationEnded;
         emit WorkflowStatusChange(WorkflowStatus.ProposalsRegistrationStarted, WorkflowStatus.ProposalsRegistrationEnded);
     }
 
     function submitProposal(string memory _description) public atStage(WorkflowStatus.ProposalsRegistrationStarted) {
         require(voters[msg.sender].isRegistered, "Only registered voters can submit proposals.");
-        proposals.push(Proposal({description: _description, voteCount: 0}));
+        require(bytes(_description).length > 0, "Proposal description cannot be empty.");
+
+        for (uint i = 0; i < proposals.length; i++) {
+            require(keccak256(bytes(proposals[i].description)) != keccak256(bytes(_description)), "This proposal has already been submitted.");
+        }
+
+        proposals.push(Proposal({proposalId: proposals.length, description: _description, voteCount: 0}));
         emit ProposalRegistered(proposals.length - 1);
     }
 
-    function startVotingSession() public onlyOwner atStage(WorkflowStatus.ProposalsRegistrationEnded) {
+    function startVotingSession() public /*onlyOwner*/ atStage(WorkflowStatus.ProposalsRegistrationEnded) {
         currentStatus = WorkflowStatus.VotingSessionStarted;
         emit WorkflowStatusChange(WorkflowStatus.ProposalsRegistrationEnded, WorkflowStatus.VotingSessionStarted);
     }
@@ -88,17 +98,13 @@ contract Voting is Ownable {
         emit Voted(msg.sender, _proposalId);
     }
 
-    function endVotingSession() public onlyOwner atStage(WorkflowStatus.VotingSessionStarted) {
+    function endVotingSession() public /*onlyOwner*/ atStage(WorkflowStatus.VotingSessionStarted) {
         currentStatus = WorkflowStatus.VotingSessionEnded;
         emit WorkflowStatusChange(WorkflowStatus.VotingSessionStarted, WorkflowStatus.VotingSessionEnded);
-        tallyVotes();  // Appeler directement tallyVotes ici
+        tallyVotes(); 
     }
 
-
-    // Assurez-vous que cette fonction met bien à jour l'état à 'VotesTallied'
-
-//FONCTION QUI ENREGISTRE LES VOTES A LA FIN DE LA SESSIONS DE VOTE 
-    function tallyVotes() public onlyOwner atStage(WorkflowStatus.VotingSessionEnded) {
+    function tallyVotes() public /*onlyOwner*/ atStage(WorkflowStatus.VotingSessionEnded) {
         uint maxVoteCount = 0;
         uint _winningProposalId = 0;
         for (uint i = 0; i < proposals.length; i++) {
@@ -107,12 +113,10 @@ contract Voting is Ownable {
                 _winningProposalId = i;
             }
         }
-        currentStatus = WorkflowStatus.VotesTallied; // Assurez-vous que cette ligne est exécutée
+        currentStatus = WorkflowStatus.VotesTallied;
         emit WorkflowStatusChange(WorkflowStatus.VotingSessionEnded, WorkflowStatus.VotesTallied);
     }
 
-    
-    //FONCTION QUI DONNE LE STATUT EN DETAIL 
     function getDetailedState() public view returns (string memory) {
         if(currentStatus == WorkflowStatus.RegisteringVoters) {
             return "Registering Voters";
@@ -131,13 +135,11 @@ contract Voting is Ownable {
         }
     }
 
-
-//FONCTION QUI RETOURNE LE GAGNANT DES VOTES 
     function getWinner() public view atStage(WorkflowStatus.VotesTallied) returns (string memory) {
         require(proposals.length > 0, "No proposals registered.");
         
         uint winningVoteCount = 0;
-        uint winningProposalIndex = 0; // Index of the winning proposal
+        uint winningProposalIndex = 0;
 
         for (uint i = 0; i < proposals.length; i++) {
             if (proposals[i].voteCount > winningVoteCount) {
@@ -146,8 +148,10 @@ contract Voting is Ownable {
             }
         }
 
-        // Return the description of the proposal with the most votes
         return proposals[winningProposalIndex].description;
     }
 
+    function getProposals() public view returns (Proposal[] memory){
+        return proposals;
+    }
 }
